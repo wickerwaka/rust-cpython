@@ -48,6 +48,7 @@ pub use pyarena::*;
 pub use modsupport::*;
 pub use pythonrun::*;
 pub use ceval::*;
+pub use sysmodule::*;
 pub use import::*;
 pub use objectabstract::*;
 pub use code::*;
@@ -55,6 +56,7 @@ pub use compile::*;
 pub use eval::*;
 pub use structmember::PyMemberDef;
 pub use frameobject::PyFrameObject;
+pub use marshal::*;
 
 mod pyport;
 mod pymem;
@@ -104,7 +106,7 @@ mod pyarena;
 mod modsupport;
 mod pythonrun;
 mod ceval;
-// mod sysmodule; // TODO: incomplete
+mod sysmodule;
 // mod intrcheck; // TODO: incomplete
 mod import;
 
@@ -113,6 +115,7 @@ mod objectabstract;
 mod code;
 mod compile;
 mod eval;
+mod marshal;
 
 // mod pyctype; // TODO: incomplete
 // mod pystrtod; // TODO: incomplete

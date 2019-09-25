@@ -18,7 +18,6 @@
 
 #![cfg_attr(feature="nightly", feature(
     const_fn, // for GILProtected::new (#24111)
-    shared, // for std::ptr::Shared (#27730)
     specialization, // for impl FromPyObject<'source> for Vec<...> (#31844)
 ))]
 
@@ -46,6 +45,17 @@
 //!
 //! You obtain a `Python` instance by acquiring the GIL,
 //! and have to pass it into all operations that call into the Python runtime.
+//!
+//! # Python 2.7
+//! The library will use the python3 bindings by default. To use the python2 bindings
+//! you must specific the `python27` feature explicitly in your `Cargo.toml`.
+//!
+//! ```ignore
+//! [dependencies.cpython]
+//! version = "*"
+//! default-features = false
+//! features = ["python27-sys"]
+//! ```
 //!
 //! # Error Handling
 //! The vast majority of operations in this library will return `PyResult<...>`.
@@ -161,14 +171,14 @@ macro_rules! py_impl_from_py_object_for_python_object {
             #[inline]
             fn extract(py: $crate::Python, obj: &'source $crate::PyObject) -> $crate::PyResult<$T> {
                 use $crate::PyClone;
-                Ok(try!(obj.clone_ref(py).cast_into::<$T>(py)))
+                Ok(obj.clone_ref(py).cast_into::<$T>(py)?)
             }
         }
 
         impl <'source> $crate::FromPyObject<'source> for &'source $T {
             #[inline]
             fn extract(py: $crate::Python, obj: &'source $crate::PyObject) -> $crate::PyResult<&'source $T> {
-                Ok(try!(obj.cast_as::<$T>(py)))
+                Ok(obj.cast_as::<$T>(py)?)
             }
         }
     }

@@ -1,6 +1,6 @@
 [package]
 name = "python3-sys"
-version = "0.1.3"
+version = "0.3.0"
 description = "FFI Declarations for Python 3"
 readme = "README.md"
 keywords = [
@@ -16,8 +16,8 @@ authors = ["Daniel Grunwald <daniel@danielgrunwald.de>"]
 links = "python3"
 build = "build.rs"
 exclude = [
-    ".gitignore",
-    ".travis.yml",
+    "/.gitignore",
+    "/.travis.yml",
 ]
 workspace = ".."
 
@@ -25,7 +25,7 @@ workspace = ".."
 libc = "0.2"
 
 [build-dependencies]
-regex = "0.1"
+regex = "1"
 
 [features]
 # This is examined by ./build.rs to determine which python version 
@@ -44,6 +44,7 @@ python-3 = []
 python-3-4 = []
 python-3-5 = []
 python-3-6 = []
+python-3-7 = []
 
 # Restrict to PEP-384 stable ABI
 pep-384 = []

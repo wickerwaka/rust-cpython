@@ -14,23 +14,23 @@ pub unsafe fn PyObject_DelAttr(o: *mut PyObject, attr_name: *mut PyObject) -> c_
 }
 
 #[cfg_attr(windows, link(name="pythonXY"))] extern "C" {
-    pub fn PyObject_Call(callable_object: *mut PyObject, args: *mut PyObject,
-                         kw: *mut PyObject) -> *mut PyObject;
-    pub fn PyObject_CallObject(callable_object: *mut PyObject,
+    pub fn PyObject_Call(callable: *mut PyObject, args: *mut PyObject,
+                         kwargs: *mut PyObject) -> *mut PyObject;
+    pub fn PyObject_CallObject(callable: *mut PyObject,
                                args: *mut PyObject) -> *mut PyObject;
-    pub fn PyObject_CallFunction(callable_object: *mut PyObject,
+    pub fn PyObject_CallFunction(callable: *mut PyObject,
                                  format: *const c_char, ...)
      -> *mut PyObject;
-    pub fn PyObject_CallMethod(o: *mut PyObject,
-                               method: *const c_char,
+    pub fn PyObject_CallMethod(obj: *mut PyObject,
+                               name: *const c_char,
                                format: *const c_char, ...)
      -> *mut PyObject;
-     
+
 
     pub fn PyObject_CallFunctionObjArgs(callable: *mut PyObject, ...)
      -> *mut PyObject;
-    pub fn PyObject_CallMethodObjArgs(o: *mut PyObject,
-                                      method: *mut PyObject, ...)
+    pub fn PyObject_CallMethodObjArgs(obj: *mut PyObject,
+                                      name: *mut PyObject, ...)
      -> *mut PyObject;
     pub fn PyObject_Type(o: *mut PyObject) -> *mut PyObject;
     pub fn PyObject_Size(o: *mut PyObject) -> Py_ssize_t;
@@ -55,15 +55,19 @@ pub unsafe fn PyObject_Length(o: *mut PyObject) -> Py_ssize_t {
      -> c_int;
     pub fn PyObject_DelItem(o: *mut PyObject, key: *mut PyObject)
      -> c_int;
+	#[deprecated(since="0.2.1", note="Old Buffer API")]
     pub fn PyObject_AsCharBuffer(obj: *mut PyObject,
                                  buffer: *mut *const c_char,
                                  buffer_len: *mut Py_ssize_t)
      -> c_int;
+	#[deprecated(since="0.2.1", note="Old Buffer API")]
     pub fn PyObject_CheckReadBuffer(obj: *mut PyObject) -> c_int;
+	#[deprecated(since="0.2.1", note="Old Buffer API")]
     pub fn PyObject_AsReadBuffer(obj: *mut PyObject,
                                  buffer: *mut *const c_void,
                                  buffer_len: *mut Py_ssize_t)
      -> c_int;
+	#[deprecated(since="0.2.1", note="Old Buffer API")]
     pub fn PyObject_AsWriteBuffer(obj: *mut PyObject,
                                   buffer: *mut *mut c_void,
                                   buffer_len: *mut Py_ssize_t)

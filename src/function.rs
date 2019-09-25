@@ -30,6 +30,10 @@ use err::{self, PyResult};
 #[doc(hidden)]
 macro_rules! py_method_def {
     ($name: expr, $flags: expr, $wrap: expr) => {{
+        py_method_def!($name, $flags, $wrap, "")
+    }};
+
+    ($name: expr, $flags: expr, $wrap: expr, $doc: expr) => {{
         static mut METHOD_DEF: $crate::_detail::ffi::PyMethodDef = $crate::_detail::ffi::PyMethodDef {
             //ml_name: bytes!(stringify!($name), "\0"),
             ml_name: 0 as *const $crate::_detail::libc::c_char,
@@ -38,12 +42,18 @@ macro_rules! py_method_def {
             ml_doc: 0 as *const $crate::_detail::libc::c_char
         };
         METHOD_DEF.ml_name = concat!($name, "\0").as_ptr() as *const _;
+        if $name.starts_with("r#") {
+            METHOD_DEF.ml_name = METHOD_DEF.ml_name.add(2);
+        }
+        if !$doc.is_empty() {
+            METHOD_DEF.ml_doc = concat!($doc, "\0").as_ptr() as *const _;
+        }
         METHOD_DEF.ml_meth = Some(
             ::std::mem::transmute::<$crate::_detail::ffi::PyCFunctionWithKeywords,
                                   $crate::_detail::ffi::PyCFunction>($wrap)
         );
         &mut METHOD_DEF
-    }}
+    }};
 }
 
 /// Creates a Python callable object that invokes a Rust function.
@@ -63,17 +73,17 @@ macro_rules! py_method_def {
 ///
 /// Form 1:
 ///
-/// * `py` must be an expression of type `Python`
-/// * `f` must be the name of a function that is compatible with the specified
+///  * `py` must be an expression of type `Python`
+///  * `f` must be the name of a function that is compatible with the specified
 ///    parameter list, except that a single parameter of type `Python` is prepended.
 ///    The function must return `PyResult<T>` for some `T` that implements `ToPyObject`.
 ///
 /// Form 2:
 ///
-/// * `py` must be an identifier refers to a `Python` value.
+///  * `py` must be an identifier refers to a `Python` value.
 ///   The function body will also have access to a `Python` variable of this name.
-/// * `f` must be an identifier.
-/// * The function return type must be `PyResult<T>` for some `T` that
+///  * `f` must be an identifier.
+///  * The function return type must be `PyResult<T>` for some `T` that
 ///   implements `ToPyObject`.
 ///
 /// # Example
@@ -97,7 +107,7 @@ macro_rules! py_method_def {
 ///     py.run("print(multiply(6, 7))", None, Some(&dict)).unwrap();
 /// }
 /// ```
-#[macro_export]
+#[macro_export(local_inner_macros)]
 macro_rules! py_fn {
     ($py:expr, $f:ident $plist:tt ) => {
         py_argparse_parse_plist! { py_fn_impl { $py, $f } $plist }
@@ -107,7 +117,7 @@ macro_rules! py_fn {
     };
 }
 
-#[macro_export]
+#[macro_export(local_inner_macros)]
 #[doc(hidden)]
 macro_rules! py_fn_impl {
     // Form 1: reference existing function
@@ -119,9 +129,9 @@ macro_rules! py_fn_impl {
         -> *mut $crate::_detail::ffi::PyObject
         {
             $crate::_detail::handle_callback(
-                stringify!($f), $crate::_detail::PyObjectCallbackConverter,
+                _cpython__function__stringify!($f), $crate::_detail::PyObjectCallbackConverter,
                 |py| {
-                    py_argparse_raw!(py, Some(stringify!($f)), args, kwargs,
+                    py_argparse_raw!(py, Some(_cpython__function__stringify!($f)), args, kwargs,
                         [ $( { $pname : $ptype = $detail } )* ]
                         {
                             $f(py $(, $pname )* )
@@ -130,7 +140,7 @@ macro_rules! py_fn_impl {
         }
         unsafe {
             $crate::_detail::py_fn_impl($py,
-                py_method_def!(stringify!($f), 0, wrap))
+                py_method_def!(_cpython__function__stringify!($f), 0, wrap))
         }
     }};
     // Form 2: inline function definition
@@ -232,5 +242,13 @@ impl <'a> Drop for AbortOnDrop<'a> {
     }
 }
 
-// Tests for this file are in tests/test_function.rs
+// Rust 2018 support
+#[macro_export]
+#[doc(hidden)]
+macro_rules! _cpython__function__stringify {
+    ($($inner:tt)*) => {
+        stringify! { $($inner)* }
+    }
+}
 
+// Tests for this file are in tests/test_function.rs

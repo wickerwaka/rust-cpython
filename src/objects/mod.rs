@@ -30,6 +30,7 @@ pub use self::iterator::PyIterator;
 pub use self::boolobject::PyBool;
 pub use self::tuple::{PyTuple, NoArgs};
 pub use self::dict::PyDict;
+pub use self::set::PySet;
 pub use self::list::PyList;
 #[cfg(feature="python27-sys")]
 pub use self::num::PyInt;
@@ -37,8 +38,9 @@ pub use self::num::PyInt;
 pub use self::num::PyLong as PyInt;
 pub use self::num::{PyLong, PyFloat};
 pub use self::sequence::PySequence;
+pub use self::capsule::PyCapsule;
 
-#[macro_export]
+#[macro_export(local_inner_macros)]
 macro_rules! pyobject_newtype(
     ($name: ident) => (
         py_impl_to_py_object_for_python_object!($name);
@@ -110,10 +112,11 @@ macro_rules! pyobject_newtype(
 );
 
 macro_rules! extract(
-    ($obj:ident to $t:ty; $py:ident => $body: block) => {
+    ($obj:ident to $t:ty; $(#[$meta:meta])* $py:ident => $body: block) => {
         impl <'source> ::conversion::FromPyObject<'source>
             for $t
         {
+            $(#[$meta])*
             fn extract($py: Python, $obj: &'source PyObject) -> PyResult<Self> {
                 $body
             }
@@ -126,12 +129,14 @@ mod typeobject;
 mod module;
 mod string;
 mod dict;
+mod set;
 mod iterator;
 mod boolobject;
 mod tuple;
 mod list;
 mod num;
 mod sequence;
+mod capsule;
 pub mod exc;
 
 #[cfg(feature="python27-sys")]

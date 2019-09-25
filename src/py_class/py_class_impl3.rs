@@ -23,7 +23,7 @@
 //       DO NOT MODIFY      !!
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-#[macro_export]
+#[macro_export(local_inner_macros)]
 #[doc(hidden)]
 macro_rules! py_class_impl {
     // TT muncher macro. Results are accumulated in $info $slots $impls and $members.
@@ -109,7 +109,7 @@ macro_rules! py_class_impl {
                     ( $( $data_name, )* ): Self::InitType
                 ) -> $crate::PyResult<$crate::PyObject>
                 {
-                    let obj = try!(<$base_type as $crate::py_class::BaseObject>::alloc(py, ty, ()));
+                    let obj = <$base_type as $crate::py_class::BaseObject>::alloc(py, ty, ())?;
                     $( $crate::py_class::data_init::<$data_ty>(py, &obj, $data_offset, $data_name); )*
                     Ok(obj)
                 }
@@ -124,11 +124,11 @@ macro_rules! py_class_impl {
         py_coerce_item! {
             impl $class {
                 fn create_instance(py: $crate::Python $( , $data_name : $data_ty )* ) -> $crate::PyResult<$class> {
-                    let obj = try!(unsafe {
+                    let obj = unsafe {
                         <$class as $crate::py_class::BaseObject>::alloc(
                             py, &py.get_type::<$class>(), ( $($data_name,)* )
                         )
-                    });
+                    }?;
                     return Ok($class { _unsafe_inner: obj });
 
                     // hide statics in create_instance to avoid name conflicts
@@ -145,7 +145,7 @@ macro_rules! py_class_impl {
                                 } else {
                                     // automatically initialize the class on-demand
                                     <$class as $crate::py_class::PythonObjectFromPyClassMacro>::initialize(py, None)
-                                        .expect(concat!("An error occurred while initializing class ", stringify!($class)))
+                                        .expect(_cpython__py_class__py_class_impl__concat!("An error occurred while initializing class ", _cpython__py_class__py_class_impl__stringify!($class)))
                                 }
                             }
                         }
@@ -157,9 +157,9 @@ macro_rules! py_class_impl {
                                 if $crate::py_class::is_ready(py, &TYPE_OBJECT) {
                                     return Ok($crate::PyType::from_type_ptr(py, &mut TYPE_OBJECT));
                                 }
-                                assert!(!INIT_ACTIVE,
-                                    concat!("Reentrancy detected: already initializing class ",
-                                    stringify!($class)));
+                                _cpython__py_class__py_class_impl__assert!(!INIT_ACTIVE,
+                                    _cpython__py_class__py_class_impl__concat!("Reentrancy detected: already initializing class ",
+                                    _cpython__py_class__py_class_impl__stringify!($class)));
                                 INIT_ACTIVE = true;
                                 let res = init(py, module_name);
                                 INIT_ACTIVE = false;
@@ -169,7 +169,7 @@ macro_rules! py_class_impl {
 
                         fn add_to_module(py: $crate::Python, module: &$crate::PyModule) -> $crate::PyResult<()> {
                             let ty = <$class as $crate::py_class::PythonObjectFromPyClassMacro>::initialize(py, module.name(py).ok())?;
-                            module.add(py, stringify!($class), ty)
+                            module.add(py, _cpython__py_class__py_class_impl__stringify!($class), ty)
                         }
                     }
 
@@ -1721,7 +1721,7 @@ macro_rules! py_class_impl {
     { { def __xor__ $($tail:tt)* } $( $stuff:tt )* } => {
         py_error! { "Invalid signature for binary numeric operator __xor__" }
     };
-    { {  def $name:ident (&$slf:ident) -> $res_type:ty { $( $body:tt )* } $($tail:tt)* }
+    { { $(#[doc=$doc:expr])* def $name:ident (&$slf:ident) -> $res_type:ty { $( $body:tt )* } $($tail:tt)* }
         $class:ident $py:ident $info:tt $slots:tt
         { $( $imp:item )* }
         { $( $member_name:ident = $member_expr:expr; )* } $properties:tt
@@ -1734,10 +1734,10 @@ macro_rules! py_class_impl {
         }
         /* members: */ {
             $( $member_name = $member_expr; )*
-            $name = py_class_instance_method!{$py, $class::$name []};
+            $name = py_class_instance_method!{$py, $class::$name, { _cpython__py_class__py_class_impl__concat!($($doc, "\n"),*) } []};
         } $properties
     }};
-    { {  def $name:ident (&$slf:ident, $($p:tt)+) -> $res_type:ty { $( $body:tt )* } $($tail:tt)* }
+    { { $(#[doc=$doc:expr])* def $name:ident (&$slf:ident, $($p:tt)+) -> $res_type:ty { $( $body:tt )* } $($tail:tt)* }
         $class:ident $py:ident $info:tt $slots:tt
         { $( $imp:item )* }
         { $( $member_name:ident = $member_expr:expr; )* } $properties:tt
@@ -1753,10 +1753,10 @@ macro_rules! py_class_impl {
         }
         /* members: */ {
             $( $member_name = $member_expr; )*
-            $name = py_argparse_parse_plist_impl!{py_class_instance_method {$py, $class::$name} [] ($($p)+,)};
+            $name = py_argparse_parse_plist_impl!{py_class_instance_method {$py, $class::$name, { _cpython__py_class__py_class_impl__concat!($($doc, "\n"),*) }} [] ($($p)+,)};
         } $properties
     }};
-    { { @classmethod def $name:ident ($cls:ident) -> $res_type:ty { $( $body:tt )* } $($tail:tt)* }
+    { { $(#[doc=$doc:expr])*@classmethod def $name:ident ($cls:ident) -> $res_type:ty { $( $body:tt )* } $($tail:tt)* }
         $class:ident $py:ident $info:tt $slots:tt
         { $( $imp:item )* }
         { $( $member_name:ident = $member_expr:expr; )* } $properties:tt
@@ -1769,10 +1769,10 @@ macro_rules! py_class_impl {
         }
         /* members: */ {
             $( $member_name = $member_expr; )*
-            $name = py_class_class_method!{$py, $class::$name []};
+            $name = py_class_class_method!{$py, $class::$name, { _cpython__py_class__py_class_impl__concat!($($doc, "\n"),*) } []};
         } $properties
     }};
-    { { @classmethod def $name:ident ($cls:ident, $($p:tt)+) -> $res_type:ty { $( $body:tt )* } $($tail:tt)* }
+    { { $(#[doc=$doc:expr])*@classmethod def $name:ident ($cls:ident, $($p:tt)+) -> $res_type:ty { $( $body:tt )* } $($tail:tt)* }
         $class:ident $py:ident $info:tt $slots:tt
         { $( $imp:item )* }
         { $( $member_name:ident = $member_expr:expr; )* } $properties:tt
@@ -1788,10 +1788,10 @@ macro_rules! py_class_impl {
         }
         /* members: */ {
             $( $member_name = $member_expr; )*
-            $name = py_argparse_parse_plist_impl!{py_class_class_method {$py, $class::$name} [] ($($p)+,)};
+            $name = py_argparse_parse_plist_impl!{py_class_class_method {$py, $class::$name, { _cpython__py_class__py_class_impl__concat!($($doc, "\n"),*) }} [] ($($p)+,)};
         } $properties
     }};
-    { { @staticmethod def $name:ident ($($p:tt)*) -> $res_type:ty { $( $body:tt )* } $($tail:tt)* }
+    { { $(#[doc=$doc:expr])* @staticmethod def $name:ident ($($p:tt)*) -> $res_type:ty { $( $body:tt )* } $($tail:tt)* }
         $class:ident $py:ident $info:tt $slots:tt
         { $( $imp:item )* }
         { $( $member_name:ident = $member_expr:expr; )* } $properties:tt
@@ -1809,7 +1809,9 @@ macro_rules! py_class_impl {
             $( $member_name = $member_expr; )*
             $name = 
             py_argparse_parse_plist!{
-                py_class_static_method {$py, $class::$name}
+                py_class_static_method {$py, $class::$name, {
+                    _cpython__py_class__py_class_impl__concat!($($doc, "\n"),*)
+                    } }
                 ($($p)*)
             }
             ;
@@ -1827,5 +1829,29 @@ macro_rules! py_class_impl {
         } $properties
     }};
 
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! _cpython__py_class__py_class_impl__concat {
+    ($($inner:tt)*) => {
+        concat! { $($inner)* }
+    }
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! _cpython__py_class__py_class_impl__stringify {
+    ($($inner:tt)*) => {
+        stringify! { $($inner)* }
+    }
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! _cpython__py_class__py_class_impl__assert {
+    ($($inner:tt)*) => {
+        assert! { $($inner)* }
+    }
 }
 

@@ -191,7 +191,7 @@ py_class!(class ClassWithGCSupport |py| {
 
     def __traverse__(&self, visit) {
         if let Some(ref obj) = *self.obj(py).borrow() {
-            try!(visit.call(obj))
+            visit.call(obj)?
         }
         Ok(())
     }
@@ -280,11 +280,14 @@ py_class!(class MyIterator |py| {
 
 ## Comparison operators
 
-  * `def __richcmp__(&self, other: impl ToPyObject, op: CompareOp) -> PyResult<impl ToPyObject>`
+  * `def __richcmp__(&self, other: impl FromPyObject, op: CompareOp) -> PyResult<impl ToPyObject>`
 
-    Overloads Python comparison operations (`==`, `!=`, `<`, `<=`, `>`, and `>=`). The `op`
-    argument indicates the comparison operation being performed.
+    Overloads Python comparison operations (`==`, `!=`, `<`, `<=`, `>`, and `>=`).
+    The `op` argument indicates the comparison operation being performed.
     The return type will normally be `PyResult<bool>`, but any Python object can be returned.
+
+    If `other` is not of the type specified in the signature, the generated code will
+    automatically `return NotImplemented`.
 
   * `def __hash__(&self) -> PyResult<impl PrimInt>`
 

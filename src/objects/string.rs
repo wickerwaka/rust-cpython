@@ -18,7 +18,6 @@
 
 use std;
 use std::{mem, str, char};
-use std::ascii::AsciiExt;
 use std::borrow::Cow;
 use libc::c_char;
 use ffi;
@@ -137,7 +136,7 @@ impl <'a> PyStringData<'a> {
             PyStringData::Utf8(data) => {
                 match str::from_utf8(data) {
                     Ok(s) => Ok(Cow::Borrowed(s)),
-                    Err(e) => Err(PyErr::from_instance(py, try!(exc::UnicodeDecodeError::new_utf8(py, data, e))))
+                    Err(e) => Err(PyErr::from_instance(py, exc::UnicodeDecodeError::new_utf8(py, data, e)?))
                 }
             }
             PyStringData::Latin1(data) => {
@@ -154,8 +153,8 @@ impl <'a> PyStringData<'a> {
                 match String::from_utf16(data) {
                     Ok(s) => Ok(Cow::Owned(s)),
                     Err(_) => Err(PyErr::from_instance(py,
-                        try!(exc::UnicodeDecodeError::new(py, cstr!("utf-16"),
-                            utf16_bytes(data), 0 .. 2*data.len(), cstr!("invalid utf-16")))
+                        exc::UnicodeDecodeError::new(py, cstr!("utf-16"),
+                            utf16_bytes(data), 0 .. 2*data.len(), cstr!("invalid utf-16"))?
                     ))
                 }
             },
@@ -166,8 +165,8 @@ impl <'a> PyStringData<'a> {
                 match data.iter().map(|&u| char::from_u32(u)).collect() {
                     Some(s) => Ok(Cow::Owned(s)),
                     None => Err(PyErr::from_instance(py,
-                        try!(exc::UnicodeDecodeError::new(py, cstr!("utf-32"),
-                            utf32_bytes(data), 0 .. 4*data.len(), cstr!("invalid utf-32")))
+                        exc::UnicodeDecodeError::new(py, cstr!("utf-32"),
+                            utf32_bytes(data), 0 .. 4*data.len(), cstr!("invalid utf-32"))?
                     ))
                 }
             }
@@ -359,7 +358,7 @@ impl PyUnicode {
     pub fn into_basestring(self) -> PyString {
         unsafe { self.0.unchecked_cast_into() }
     }
-    
+
     /// Gets the python string data in its underlying representation.
     pub fn data(&self, _py: Python) -> PyStringData {
         unsafe {
@@ -423,7 +422,7 @@ impl ToPyObject for String {
 /// In Python 2.7, `str` is expected to be UTF-8 encoded.
 impl <'source> FromPyObject<'source> for Cow<'source, str> {
     fn extract(py: Python, obj: &'source PyObject) -> PyResult<Self> {
-        try!(obj.cast_as::<PyString>(py)).to_string(py)
+        obj.cast_as::<PyString>(py)?.to_string(py)
     }
 }
 
@@ -436,11 +435,33 @@ impl <'source> FromPyObject<'source> for String {
     }
 }
 
+/// Allows extracting byte arrays from Python objects.
+/// For Python `bytes`, returns a reference to the existing immutable string data.
+/// For other types, converts to an owned `Vec<u8>`.
+impl <'source> FromPyObject<'source> for Cow<'source, [u8]> {
+    fn extract(py: Python, obj: &'source PyObject) -> PyResult<Self> {
+        if let Ok(bytes) = obj.cast_as::<PyBytes>(py) {
+            Ok(Cow::Borrowed(bytes.data(py)))
+        } else {
+            obj.extract::<Vec<u8>>(py).map(Cow::Owned)
+        }
+    }
+}
+
 impl RefFromPyObject for str {
     fn with_extracted<F, R>(py: Python, obj: &PyObject, f: F) -> PyResult<R>
         where F: FnOnce(&str) -> R
     {
-        let s = try!(obj.extract::<Cow<str>>(py));
+        let s = obj.extract::<Cow<str>>(py)?;
+        Ok(f(&s))
+    }
+}
+
+impl RefFromPyObject for [u8] {
+    fn with_extracted<F, R>(py: Python, obj: &PyObject, f: F) -> PyResult<R>
+        where F: FnOnce(&[u8]) -> R
+    {
+        let s = obj.extract::<Cow<[u8]>>(py)?;
         Ok(f(&s))
     }
 }
@@ -473,5 +494,28 @@ mod test {
             }).unwrap();
         assert!(called);
     }
-}
 
+    #[test]
+    fn test_extract_byte_str() {
+        let gil = Python::acquire_gil();
+        let py = gil.python();
+        let py_bytes = py.eval("b'Hello'", None, None).unwrap();
+        let mut called = false;
+        RefFromPyObject::with_extracted(py, &py_bytes,
+            |s2: &[u8]| {
+                assert_eq!(b"Hello", s2);
+                called = true;
+            }).unwrap();
+        assert!(called);
+    }
+
+    #[test]
+    #[cfg(feature="nightly")] // only works with specialization
+    fn test_extract_byte_str_to_vec() {
+        let gil = Python::acquire_gil();
+        let py = gil.python();
+        let py_bytes = py.eval("b'Hello'", None, None).unwrap();
+        let v = py_bytes.extract::<Vec<u8>>(py).unwrap();
+        assert_eq!(b"Hello", &v[..]);
+    }
+}

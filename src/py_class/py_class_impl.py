@@ -30,7 +30,7 @@ header = '''
 '''
 
 macro_start = '''
-#[macro_export]
+#[macro_export(local_inner_macros)]
 #[doc(hidden)]
 macro_rules! py_class_impl {
     // TT muncher macro. Results are accumulated in $info $slots $impls and $members.
@@ -117,7 +117,7 @@ base_case = '''
                     ( $( $data_name, )* ): Self::InitType
                 ) -> $crate::PyResult<$crate::PyObject>
                 {
-                    let obj = try!(<$base_type as $crate::py_class::BaseObject>::alloc(py, ty, ()));
+                    let obj = <$base_type as $crate::py_class::BaseObject>::alloc(py, ty, ())?;
                     $( $crate::py_class::data_init::<$data_ty>(py, &obj, $data_offset, $data_name); )*
                     Ok(obj)
                 }
@@ -132,11 +132,11 @@ base_case = '''
         py_coerce_item! {
             impl $class {
                 fn create_instance(py: $crate::Python $( , $data_name : $data_ty )* ) -> $crate::PyResult<$class> {
-                    let obj = try!(unsafe {
+                    let obj = unsafe {
                         <$class as $crate::py_class::BaseObject>::alloc(
                             py, &py.get_type::<$class>(), ( $($data_name,)* )
                         )
-                    });
+                    }?;
                     return Ok($class { _unsafe_inner: obj });
 
                     // hide statics in create_instance to avoid name conflicts
@@ -153,7 +153,7 @@ base_case = '''
                                 } else {
                                     // automatically initialize the class on-demand
                                     <$class as $crate::py_class::PythonObjectFromPyClassMacro>::initialize(py, None)
-                                        .expect(concat!("An error occurred while initializing class ", stringify!($class)))
+                                        .expect(_cpython__py_class__py_class_impl__concat!("An error occurred while initializing class ", _cpython__py_class__py_class_impl__stringify!($class)))
                                 }
                             }
                         }
@@ -165,9 +165,9 @@ base_case = '''
                                 if $crate::py_class::is_ready(py, &TYPE_OBJECT) {
                                     return Ok($crate::PyType::from_type_ptr(py, &mut TYPE_OBJECT));
                                 }
-                                assert!(!INIT_ACTIVE,
-                                    concat!("Reentrancy detected: already initializing class ",
-                                    stringify!($class)));
+                                _cpython__py_class__py_class_impl__assert!(!INIT_ACTIVE,
+                                    _cpython__py_class__py_class_impl__concat!("Reentrancy detected: already initializing class ",
+                                    _cpython__py_class__py_class_impl__stringify!($class)));
                                 INIT_ACTIVE = true;
                                 let res = init(py, module_name);
                                 INIT_ACTIVE = false;
@@ -177,7 +177,7 @@ base_case = '''
 
                         fn add_to_module(py: $crate::Python, module: &$crate::PyModule) -> $crate::PyResult<()> {
                             let ty = <$class as $crate::py_class::PythonObjectFromPyClassMacro>::initialize(py, module.name(py).ok())?;
-                            module.add(py, stringify!($class), ty)
+                            module.add(py, _cpython__py_class__py_class_impl__stringify!($class), ty)
                         }
                     }
 
@@ -382,7 +382,12 @@ def generate_class_method(special_name=None, decoration='',
         slot=None, add_member=False, value_macro=None, value_args=None):
     name_pattern = special_name or '$name:ident'
     name_use = special_name or '$name'
-    def impl(with_params):
+    def impl(with_params, with_docs):
+        if with_docs:
+            doc_prefix = '$(#[doc=$doc:expr])*'
+            value_suffix = ', { _cpython__py_class__py_class_impl__concat!($($doc, "\\n"),*) }'
+        else:
+            doc_prefix = value_suffix = ''
         if with_params:
             param_pattern = ', $($p:tt)+'
             impl = '''py_argparse_parse_plist_impl!{
@@ -390,14 +395,14 @@ def generate_class_method(special_name=None, decoration='',
                 [] ($($p)+,)
             }''' % name_use
             value = 'py_argparse_parse_plist_impl!{%s {%s} [] ($($p)+,)}' \
-                    % (value_macro, value_args)
+                    % (value_macro, value_args + value_suffix)
         else:
             param_pattern = ''
             impl = 'py_class_impl_item! { $class, $py,%s($cls: &$crate::PyType,) $res_type; { $($body)* } [] }' \
                 % name_use
-            value = '%s!{%s []}' % (value_macro, value_args)
+            value = '%s!{%s []}' % (value_macro, value_args + value_suffix)
         pattern = '%s def %s ($cls:ident%s) -> $res_type:ty { $( $body:tt )* }' \
-            % (decoration, name_pattern, param_pattern)
+            % (doc_prefix + decoration, name_pattern, param_pattern)
         slots = []
         if slot is not None:
             slots.append((slot, value))
@@ -405,8 +410,11 @@ def generate_class_method(special_name=None, decoration='',
         if add_member:
             members.append((name_use, value))
         generate_case(pattern, new_impl=impl, new_slots=slots, new_members=members)
-    impl(False) # without parameters
-    impl(True) # with parameters
+
+    # Special methods can't handle docs.
+    with_docs = (value_macro == 'py_class_class_method')
+    for with_params in (False, True):
+        impl(with_params, with_docs)
 
 def traverse_and_clear():
     generate_case('def __traverse__(&$slf:tt, $visit:ident) $body:block',
@@ -459,7 +467,12 @@ def generate_instance_method(special_name=None, decoration='',
         slot=None, add_member=False, value_macro=None, value_args=None):
     name_pattern = special_name or '$name:ident'
     name_use = special_name or '$name'
-    def impl(with_params):
+    def impl(with_params, with_docs):
+        if with_docs:
+            doc_prefix = '$(#[doc=$doc:expr])*'
+            value_suffix = ', { _cpython__py_class__py_class_impl__concat!($($doc, "\\n"),*) }'
+        else:
+            doc_prefix = value_suffix = ''
         if with_params:
             param_pattern = ', $($p:tt)+'
             impl = '''py_argparse_parse_plist_impl!{
@@ -467,14 +480,14 @@ def generate_instance_method(special_name=None, decoration='',
                 [] ($($p)+,)
             }''' % name_use
             value = 'py_argparse_parse_plist_impl!{%s {%s} [] ($($p)+,)}' \
-                    % (value_macro, value_args)
+                    % (value_macro, value_args + value_suffix)
         else:
             param_pattern = ''
             impl = 'py_class_impl_item! { $class, $py, %s(&$slf,) $res_type; { $($body)* } [] }' \
                 % name_use
-            value = '%s!{%s []}' % (value_macro, value_args)
+            value = '%s!{%s []}' % (value_macro, value_args + value_suffix)
         pattern = '%s def %s (&$slf:ident%s) -> $res_type:ty { $( $body:tt )* }' \
-            % (decoration, name_pattern, param_pattern)
+            % (doc_prefix + decoration, name_pattern, param_pattern)
         slots = []
         if slot is not None:
             slots.append((slot, value))
@@ -482,12 +495,15 @@ def generate_instance_method(special_name=None, decoration='',
         if add_member:
             members.append((name_use, value))
         generate_case(pattern, new_impl=impl, new_slots=slots, new_members=members)
-    impl(False) # without parameters
-    impl(True) # with parameters
+
+    # Special methods can't handle docs.
+    with_docs = (value_macro == 'py_class_instance_method')
+    for with_params in (False, True):
+        impl(with_params, with_docs)
 
 def static_method():
     generate_case(
-        '@staticmethod def $name:ident ($($p:tt)*) -> $res_type:ty { $( $body:tt )* }',
+        '$(#[doc=$doc:expr])* @staticmethod def $name:ident ($($p:tt)*) -> $res_type:ty { $( $body:tt )* }',
         new_impl='''
             py_argparse_parse_plist!{
                 py_class_impl_item { $class, $py, $name() $res_type; { $($body)* } }
@@ -496,7 +512,9 @@ def static_method():
         ''',
         new_members=[('$name', '''
             py_argparse_parse_plist!{
-                py_class_static_method {$py, $class::$name}
+                py_class_static_method {$py, $class::$name, {
+                    _cpython__py_class__py_class_impl__concat!($($doc, "\\n"),*)
+                } }
                 ($($p)*)
             }
         ''')])
@@ -506,6 +524,30 @@ def static_data():
         new_members=[('$name', '$init')])
 
 macro_end = '''
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! _cpython__py_class__py_class_impl__concat {
+    ($($inner:tt)*) => {
+        concat! { $($inner)* }
+    }
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! _cpython__py_class__py_class_impl__stringify {
+    ($($inner:tt)*) => {
+        stringify! { $($inner)* }
+    }
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! _cpython__py_class__py_class_impl__assert {
+    ($($inner:tt)*) => {
+        assert! { $($inner)* }
+    }
 }
 '''
 

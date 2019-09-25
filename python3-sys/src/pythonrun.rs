@@ -5,26 +5,30 @@ use pystate::PyThreadState;
 #[cfg(not(Py_LIMITED_API))]
 use pyarena::PyArena;
 
-// TODO: PyCF_MASK etc. constants
-
 #[cfg_attr(windows, link(name="pythonXY"))] extern "C" { // TODO: these moved to pylifecycle.h
-    pub fn Py_SetProgramName(arg1: *mut wchar_t) -> ();
+    #[cfg(Py_3_4)]
+    pub fn Py_SetStandardStreamEncoding(encoding: *const c_char, errors: *const c_char) -> c_int;
+    pub fn Py_SetProgramName(arg1: *const wchar_t) -> ();
     pub fn Py_GetProgramName() -> *mut wchar_t;
-    pub fn Py_SetPythonHome(arg1: *mut wchar_t) -> ();
+    pub fn Py_SetPythonHome(arg1: *const wchar_t) -> ();
     pub fn Py_GetPythonHome() -> *mut wchar_t;
     pub fn Py_Initialize() -> ();
     pub fn Py_InitializeEx(arg1: c_int) -> ();
     pub fn Py_Finalize() -> ();
+    #[cfg(Py_3_6)]
+    pub fn Py_FinalizeEx() -> c_int;
     pub fn Py_IsInitialized() -> c_int;
     pub fn Py_NewInterpreter() -> *mut PyThreadState;
     pub fn Py_EndInterpreter(arg1: *mut PyThreadState) -> ();
 }
 
+// Note: PyCompilerFlags was moved to compile.h in Python 3.7;
+// We still have our version in pythonrun.rs
 #[repr(C)]
 #[derive(Copy, Clone)]
 #[cfg(not(Py_LIMITED_API))]
 pub struct PyCompilerFlags {
-    cf_flags : c_int
+    pub cf_flags : c_int
 }
 
 #[cfg(not(Py_LIMITED_API))]

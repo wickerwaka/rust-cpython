@@ -15,7 +15,7 @@ pub const PyCF_ONLY_AST : c_int = 0x0400;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct PyCompilerFlags {
-    cf_flags : c_int
+    pub cf_flags : c_int
 }
 
 #[allow(missing_copy_implementations)]
@@ -112,10 +112,7 @@ pub enum Struct_symtable { }
     pub fn Py_GetCopyright() -> *const c_char;
     pub fn Py_GetCompiler() -> *const c_char;
     pub fn Py_GetBuildInfo() -> *const c_char;
-    fn _Py_svnversion() -> *const c_char;
     pub fn Py_SubversionRevision() -> *const c_char;
     pub fn Py_SubversionShortBranch() -> *const c_char;
-    fn _Py_hgidentifier() -> *const c_char;
-    fn _Py_hgversion() -> *const c_char;
 }
 

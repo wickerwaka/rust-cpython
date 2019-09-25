@@ -3,10 +3,21 @@ use pyport::Py_ssize_t;
 use object::*;
 
 #[cfg_attr(windows, link(name="pythonXY"))] extern "C" {
+    #[cfg(not(py_sys_config="Py_DEBUG"))]
     pub fn PyObject_Malloc(arg1: size_t) -> *mut c_void;
+    #[cfg(not(py_sys_config="Py_DEBUG"))]
     pub fn PyObject_Realloc(arg1: *mut c_void, arg2: size_t)
      -> *mut c_void;
+     #[cfg(not(py_sys_config="Py_DEBUG"))]
     pub fn PyObject_Free(arg1: *mut c_void);
+
+    #[cfg(py_sys_config="Py_DEBUG")]
+    pub fn _PyObject_DebugMalloc(arg1: size_t) -> *mut c_void;
+    #[cfg(py_sys_config="Py_DEBUG")]
+    pub fn _PyObject_DebugRealloc(arg1: *mut c_void, arg2: size_t)
+     -> *mut c_void;
+    #[cfg(py_sys_config="Py_DEBUG")]
+    pub fn _PyObject_DebugFree(arg1: *mut c_void);
 
     pub fn PyObject_Init(arg1: *mut PyObject, arg2: *mut PyTypeObject)
      -> *mut PyObject;
@@ -29,10 +40,17 @@ use object::*;
     pub fn PyObject_GC_Del(arg1: *mut c_void);
 }
 
+#[cfg(py_sys_config="Py_DEBUG")]
+pub use self::_PyObject_DebugMalloc as PyObject_Malloc;
+#[cfg(py_sys_config="Py_DEBUG")]
+pub use self::_PyObject_DebugRealloc as PyObject_Realloc;
+#[cfg(py_sys_config="Py_DEBUG")]
+pub use self::_PyObject_DebugFree as PyObject_Free;
+
 /// Test if a type has a GC head
 #[inline(always)]
 pub unsafe fn PyType_IS_GC(t : *mut PyTypeObject) -> c_int {
-    PyType_HasFeature((t), Py_TPFLAGS_HAVE_GC)
+    PyType_HasFeature(t, Py_TPFLAGS_HAVE_GC)
 }
 
 /// Test if an object has a GC head
@@ -48,7 +66,7 @@ pub unsafe fn PyObject_IS_GC(o : *mut PyObject) -> c_int {
 /* Test if a type supports weak references */
 #[inline(always)]
 pub unsafe fn PyType_SUPPORTS_WEAKREFS(t : *mut PyTypeObject) -> c_int {
-    (PyType_HasFeature((t), Py_TPFLAGS_HAVE_WEAKREFS) != 0
+    (PyType_HasFeature(t, Py_TPFLAGS_HAVE_WEAKREFS) != 0
      && ((*t).tp_weaklistoffset > 0)) as c_int
 }
 

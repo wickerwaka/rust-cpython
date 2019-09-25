@@ -25,7 +25,7 @@ use objects::{PyObject, PyTuple, PyDict, PyString};
 use conversion::ToPyObject;
 use err::{PyErr, PyResult, self};
 
-/// Trait that contains methods 
+/// Trait that contains methods
 pub trait ObjectProtocol : PythonObject {
     /// Determines whether this object has the given attribute.
     /// This is equivalent to the Python expression 'hasattr(self, attr_name)'.
@@ -70,13 +70,26 @@ pub trait ObjectProtocol : PythonObject {
     }
 
     /// Compares two Python objects.
-    /// This is equivalent to the Python expression 'cmp(self, other)'.
-    #[cfg(feature="python27-sys")]
+    ///
+    /// On Python 2, this is equivalent to the Python expression 'cmp(self, other)'.
+    ///
+    /// On Python 3, this is equivalent to:
+    /// ```ignore
+    /// if self == other:
+    ///     return Equal
+    /// elif a < b:
+    ///     return Less
+    /// elif a > b:
+    ///     return Greater
+    /// else:
+    ///     raise TypeError("ObjectProtocol::compare(): All comparisons returned false")
+    /// ```
     fn compare<O>(&self, py: Python, other: O) -> PyResult<Ordering> where O: ToPyObject {
-        other.with_borrowed_ptr(py, |other| unsafe {
+        #[cfg(feature="python27-sys")]
+        unsafe fn do_compare(py: Python, a: *mut ffi::PyObject, b: *mut ffi::PyObject) -> PyResult<Ordering> {
             let mut result = -1;
-            try!(err::error_on_minusone(py,
-                ffi::PyObject_Cmp(self.as_ptr(), other, &mut result)));
+            err::error_on_minusone(py,
+                ffi::PyObject_Cmp(a, b, &mut result))?;
             Ok(if result < 0 {
                 Ordering::Less
             } else if result > 0 {
@@ -84,6 +97,48 @@ pub trait ObjectProtocol : PythonObject {
             } else {
                 Ordering::Equal
             })
+        }
+
+        #[cfg(feature="python3-sys")]
+        unsafe fn do_compare(py: Python, a: *mut ffi::PyObject, b: *mut ffi::PyObject) -> PyResult<Ordering> {
+            let result = ffi::PyObject_RichCompareBool(a, b, ffi::Py_EQ);
+            if result == 1 {
+                return Ok(Ordering::Equal);
+            } else if result < 0 {
+                return Err(PyErr::fetch(py));
+            }
+            let result = ffi::PyObject_RichCompareBool(a, b, ffi::Py_LT);
+            if result == 1 {
+                return Ok(Ordering::Less);
+            } else if result < 0 {
+                return Err(PyErr::fetch(py));
+            }
+            let result = ffi::PyObject_RichCompareBool(a, b, ffi::Py_GT);
+            if result == 1 {
+                return Ok(Ordering::Greater);
+            } else if result < 0 {
+                return Err(PyErr::fetch(py));
+            }
+            return Err(PyErr::new::<::exc::TypeError, _>(py, "ObjectProtocol::compare(): All comparisons returned false"));
+        }
+
+        other.with_borrowed_ptr(py, |other| unsafe {
+            do_compare(py, self.as_ptr(), other)
+        })
+    }
+
+    /// Compares two Python objects.
+    ///
+    /// Depending on the value of `compare_op`, equivalent to one of the following Python expressions:
+    ///   * CompareOp::Eq: `self == other`
+    ///   * CompareOp::Ne: `self != other`
+    ///   * CompareOp::Lt: `self < other`
+    ///   * CompareOp::Le: `self <= other`
+    ///   * CompareOp::Gt: `self > other`
+    ///   * CompareOp::Ge: `self >= other`
+    fn rich_compare<O>(&self, py: Python, other: O, compare_op: ::CompareOp) -> PyResult<PyObject> where O: ToPyObject {
+        other.with_borrowed_ptr(py, |other| unsafe {
+            err::result_cast_from_owned_ptr(py, ffi::PyObject_RichCompare(self.as_ptr(), other, compare_op as libc::c_int))
         })
     }
 
@@ -125,6 +180,11 @@ pub trait ObjectProtocol : PythonObject {
 
     /// Calls the object.
     /// This is equivalent to the Python expression: 'self(*args, **kwargs)'
+    ///
+    /// `args` should be a value that, when converted to Python, results in a tuple.
+    /// For this purpose, you can use:
+    ///  * `cpython::NoArgs` when calling a method without any arguments
+    ///  * otherwise, a Rust tuple with 1 or more elements
     #[inline]
     fn call<A>(&self, py: Python, args: A, kwargs: Option<&PyDict>) -> PyResult<PyObject>
         where A: ToPyObject<ObjectType=PyTuple>
@@ -136,11 +196,29 @@ pub trait ObjectProtocol : PythonObject {
 
     /// Calls a method on the object.
     /// This is equivalent to the Python expression: 'self.name(*args, **kwargs)'
+    ///
+    /// `args` should be a value that, when converted to Python, results in a tuple.
+    /// For this purpose, you can use:
+    ///  * `cpython::NoArgs` when calling a method without any arguments
+    ///  * otherwise, a Rust tuple with 1 or more elements
+    ///
+    /// # Example
+    /// ```no_run
+    /// use cpython::{NoArgs, ObjectProtocol};
+    /// # use cpython::Python;
+    /// # let gil = Python::acquire_gil();
+    /// # let py = gil.python();
+    /// # let obj = py.None();
+    /// // Call method without arguments:
+    /// let value = obj.call_method(py, "method0", NoArgs, None).unwrap();
+    /// // Call method with a single argument:
+    /// obj.call_method(py, "method1", (true,), None).unwrap();
+    /// ```
     #[inline]
     fn call_method<A>(&self, py: Python, name: &str, args: A, kwargs: Option<&PyDict>) -> PyResult<PyObject>
         where A: ToPyObject<ObjectType=PyTuple>
     {
-        try!(self.getattr(py, name)).call(py, args, kwargs)
+        self.getattr(py, name)?.call(py, args, kwargs)
     }
 
     /// Retrieves the hash code of the object.
@@ -214,10 +292,10 @@ pub trait ObjectProtocol : PythonObject {
     /// is an iterator, this returns itself.
     #[inline]
     fn iter<'p>(&self, py: Python<'p>) -> PyResult<::objects::PyIterator<'p>> {
-        let obj = try!(unsafe {
+        let obj = unsafe {
             err::result_from_owned_ptr(py, ffi::PyObject_GetIter(self.as_ptr()))
-        });
-        Ok(try!(::objects::PyIterator::from_object(py, obj)))
+        }?;
+        Ok(::objects::PyIterator::from_object(py, obj)?)
     }
 }
 
@@ -228,7 +306,7 @@ impl fmt::Debug for PyObject {
         // TODO: we shouldn't use fmt::Error when repr() fails
         let gil_guard = Python::acquire_gil();
         let py = gil_guard.python();
-        let repr_obj = try!(self.repr(py).map_err(|_| fmt::Error));
+        let repr_obj = self.repr(py).map_err(|_| fmt::Error)?;
         f.write_str(&repr_obj.to_string_lossy(py))
     }
 }
@@ -238,7 +316,7 @@ impl fmt::Display for PyObject {
         // TODO: we shouldn't use fmt::Error when str() fails
         let gil_guard = Python::acquire_gil();
         let py = gil_guard.python();
-        let str_obj = try!(self.str(py).map_err(|_| fmt::Error));
+        let str_obj = self.str(py).map_err(|_| fmt::Error)?;
         f.write_str(&str_obj.to_string_lossy(py))
     }
 }
@@ -249,6 +327,7 @@ mod test {
     use python::{Python, PythonObject};
     use conversion::ToPyObject;
     use objects::{PyList, PyTuple};
+    use super::ObjectProtocol;
 
     #[test]
     fn test_debug_string() {
@@ -264,6 +343,17 @@ mod test {
         let py = gil.python();
         let v = "Hello\n".to_py_object(py).into_object();
         assert_eq!(format!("{}", v), "Hello\n");
+    }
+
+    #[test]
+    fn test_compare() {
+        use std::cmp::Ordering;
+        let gil = Python::acquire_gil();
+        let py = gil.python();
+        let one = 1i32.to_py_object(py).into_object();
+        assert_eq!(one.compare(py, 1).unwrap(), Ordering::Equal);
+        assert_eq!(one.compare(py, 2).unwrap(), Ordering::Less);
+        assert_eq!(one.compare(py, 0).unwrap(), Ordering::Greater);
     }
 }
 

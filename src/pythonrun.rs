@@ -54,8 +54,13 @@ pub fn prepare_freethreaded_python() {
             // as we can't make the existing Python main thread acquire the GIL.
             assert!(ffi::PyEval_ThreadsInitialized() != 0);
         } else {
-            // If Python isn't initialized yet, we expect that Python threading isn't initialized either.
-            assert!(ffi::PyEval_ThreadsInitialized() == 0);
+            #[cfg(feature="python27-sys")] {
+                // If Python isn't initialized yet, we expect that Python threading isn't initialized either.
+                assert!(ffi::PyEval_ThreadsInitialized() == 0);
+                // Note: starting with Python 3.2 it's no longer possible to initialize threading
+                // without initializing Python; and in Python 3.7 PyEval_ThreadsInitialized() started
+                // misbehaving when Python was not initialized yet.
+            }
             // Initialize Python.
             // We use Py_InitializeEx() with initsigs=0 to disable Python signal handling.
             // Signal handling depends on the notion of a 'main thread', which doesn't exist in this case.
@@ -106,7 +111,9 @@ impl GILGuard {
     /// If the Python runtime is not already initialized, this function will initialize it.
     /// See [prepare_freethreaded_python()](fn.prepare_freethreaded_python.html) for details.
     pub fn acquire() -> GILGuard {
-        ::pythonrun::prepare_freethreaded_python();
+        if !cfg!(feature = "no-auto-initialize") {
+            ::pythonrun::prepare_freethreaded_python();
+        }
         let gstate = unsafe { ffi::PyGILState_Ensure() }; // acquire GIL
         GILGuard { gstate: gstate, no_send: marker::PhantomData }
     }

@@ -34,13 +34,24 @@ pub struct ParamDescription<'a> {
     pub is_optional: bool
 }
 
+impl<'a> ParamDescription<'a> {
+    /// Name, with leading `r#` stripped.
+    pub fn name(&self) -> &str {
+        if self.name.starts_with("r#") {
+            &self.name[2..]
+        } else {
+            self.name
+        }
+    }
+}
+
 /// Parse argument list
 ///
-/// * fname:  Name of the current function
-/// * params: Declared parameters of the function
-/// * args:   Positional arguments
-/// * kwargs: Keyword arguments
-/// * output: Output array that receives the arguments.
+///  * fname:  Name of the current function
+///  * params: Declared parameters of the function
+///  * args:   Positional arguments
+///  * kwargs: Keyword arguments
+///  * output: Output array that receives the arguments.
 ///           Must have same length as `params` and must be initialized to `None`.
 pub fn parse_args(
     py: Python,
@@ -65,14 +76,14 @@ pub fn parse_args(
     let mut used_keywords = 0;
     // Iterate through the parameters and assign values to output:
     for (i, (p, out)) in params.iter().zip(output).enumerate() {
-        match kwargs.and_then(|d| d.get_item(py, p.name)) {
+        match kwargs.and_then(|d| d.get_item(py, p.name())) {
             Some(kwarg) => {
                 *out = Some(kwarg);
                 used_keywords += 1;
                 if i < nargs {
                     return Err(err::PyErr::new::<exc::TypeError, _>(py,
                         format!("Argument given by name ('{}') and position ({})",
-                                p.name, i+1)));
+                                p.name(), i+1)));
                 }
             },
             None => {
@@ -83,7 +94,7 @@ pub fn parse_args(
                     if !p.is_optional {
                         return Err(err::PyErr::new::<exc::TypeError, _>(py,
                             format!("Required argument ('{}') (pos {}) not found",
-                                    p.name, i+1)));
+                                    p.name(), i+1)));
                     }
                 }
             }
@@ -92,7 +103,7 @@ pub fn parse_args(
     if used_keywords != nkeywords {
         // check for extraneous keyword arguments
         for (key, _value) in kwargs.unwrap().items(py) {
-            let key = try!(try!(key.cast_as::<PyString>(py)).to_string(py));
+            let key = key.cast_as::<PyString>(py)?.to_string(py)?;
             if !params.iter().any(|p| p.name == key) {
                 return Err(err::PyErr::new::<exc::TypeError, _>(py,
                     format!("'{}' is an invalid keyword argument for this function",
@@ -107,11 +118,11 @@ pub fn parse_args(
 ///
 /// Syntax: `py_argparse!(py, fname, args, kwargs, (parameter-list) { body })`
 ///
-/// * `py`: the `Python` token
-/// * `fname`: expression of type `Option<&str>`: Name of the function used in error messages.
-/// * `args`: expression of type `&PyTuple`: The position arguments
-/// * `kwargs`: expression of type `Option<&PyDict>`: The named arguments
-/// * `parameter-list`: a comma-separated list of parameter declarations.
+///  * `py`: the `Python` token
+///  * `fname`: expression of type `Option<&str>`: Name of the function used in error messages.
+///  * `args`: expression of type `&PyTuple`: The position arguments
+///  * `kwargs`: expression of type `Option<&PyDict>`: The named arguments
+///  * `parameter-list`: a comma-separated list of parameter declarations.
 ///   Parameter declarations have one of these formats:
 ///    1. `name`
 ///    2. `name: ty`
@@ -126,7 +137,7 @@ pub fn parse_args(
 ///   `&PyObject` (format 1), `&PyTuple` (format 4) or `&PyDict` (format 6).
 ///   If a default value is specified, it must be a compile-time constant
 //    of type `ty`.
-/// * `body`: expression of type `PyResult<_>`.
+///  * `body`: expression of type `PyResult<_>`.
 ///     The extracted argument values are available in this scope.
 ///
 /// `py_argparse!()` expands to code that extracts values from `args` and `kwargs` and assigns
@@ -140,14 +151,14 @@ pub fn parse_args(
 /// so `return` statements might behave unexpectedly in this case. (this only affects direct use
 /// of `py_argparse!`; `py_fn!` is unaffected as the body there is always in a separate function
 /// from the generated argument-parsing code).
-#[macro_export]
+#[macro_export(local_inner_macros)]
 macro_rules! py_argparse {
     ($py:expr, $fname:expr, $args:expr, $kwargs:expr, $plist:tt $body:block) => {
         py_argparse_parse_plist! { py_argparse_impl { $py, $fname, $args, $kwargs, $body, } $plist }
     };
 }
 
-#[macro_export]
+#[macro_export(local_inner_macros)]
 #[doc(hidden)]
 macro_rules! py_argparse_parse_plist {
     // Parses a parameter-list into a format more suitable for consumption by Rust macros.
@@ -167,7 +178,7 @@ macro_rules! py_argparse_parse_plist {
     };
 }
 
-#[macro_export]
+#[macro_export(local_inner_macros)]
 #[doc(hidden)]
 macro_rules! py_argparse_parse_plist_impl {
     // TT muncher macro that does the main work for py_argparse_parse_plist!.
@@ -290,7 +301,7 @@ macro_rules! py_argparse_parse_plist_impl {
 
 // The main py_argparse!() macro, except that it expects the parameter-list
 // in the output format of py_argparse_parse_plist!().
-#[macro_export]
+#[macro_export(local_inner_macros)]
 #[doc(hidden)]
 macro_rules! py_argparse_impl {
     // special case: function signature is (*args, **kwargs),
@@ -337,7 +348,7 @@ macro_rules! py_argparse_impl {
 }
 
 // Like py_argparse_impl!(), but accepts `*mut ffi::PyObject` for $args and $kwargs.
-#[macro_export]
+#[macro_export(local_inner_macros)]
 #[doc(hidden)]
 macro_rules! py_argparse_raw {
     ($py:ident, $fname:expr, $args:expr, $kwargs:expr, $plist:tt $body:block) => {{
@@ -379,7 +390,7 @@ macro_rules! py_argparse_param_description {
     );
 }
 
-#[macro_export]
+#[macro_export(local_inner_macros)]
 #[doc(hidden)]
 macro_rules! py_argparse_extract {
     // base case

@@ -116,11 +116,11 @@ macro_rules! tuple_conversion ({$length:expr,$(($refN:ident, $n:tt, $T:ident)),+
 
     impl <'s, $($T: FromPyObject<'s>),+> FromPyObject<'s> for ($($T,)+) {
         fn extract(py: Python, obj: &'s PyObject) -> PyResult<Self> {
-            let t = try!(obj.cast_as::<PyTuple>(py));
+            let t = obj.cast_as::<PyTuple>(py)?;
             let slice = t.as_slice(py);
             if slice.len() == $length {
                 Ok((
-                    $( try!(slice[$n].extract::<$T>(py)), )+
+                    $( slice[$n].extract::<$T>(py)?, )+
                 ))
             } else {
                 Err(wrong_tuple_length(py, t, $length))
@@ -154,7 +154,7 @@ tuple_conversion!(9, (ref0, 0, A), (ref1, 1, B), (ref2, 2, C), (ref3, 3, D),
 /// let gil_guard = cpython::Python::acquire_gil();
 /// let py = gil_guard.python();
 /// let os = py.import("os").unwrap();
-/// let pid = os.call(py, "get_pid", cpython::NoArgs, None);
+/// let pid = os.call(py, "getpid", cpython::NoArgs, None).unwrap();
 /// ```
 #[derive(Copy, Clone, Debug)]
 pub struct NoArgs;
@@ -168,16 +168,18 @@ impl ToPyObject for NoArgs {
     }
 }
 
-/// Returns `Ok(NoArgs)` if the input is an empty Python tuple.
-/// Otherwise, returns an error.
-extract!(obj to NoArgs; py => {
-    let t = try!(obj.cast_as::<PyTuple>(py));
-    if t.len(py) == 0 {
-        Ok(NoArgs)
-    } else {
-        Err(wrong_tuple_length(py, t, 0))
+extract!(obj to NoArgs;
+    /// Returns `Ok(NoArgs)` if the input is an empty Python tuple.
+    /// Otherwise, returns an error.
+    py => {
+        let t = obj.cast_as::<PyTuple>(py)?;
+        if t.len(py) == 0 {
+            Ok(NoArgs)
+        } else {
+            Err(wrong_tuple_length(py, t, 0))
+        }
     }
-});
+);
 
 
 

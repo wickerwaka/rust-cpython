@@ -65,7 +65,7 @@ impl PyModule {
             let slice = CStr::from_ptr(ptr).to_bytes();
             match std::str::from_utf8(slice) {
                 Ok(s) => Ok(s),
-                Err(e) => Err(PyErr::from_instance(py, try!(exc::UnicodeDecodeError::new_utf8(py, slice, e))))
+                Err(e) => Err(PyErr::from_instance(py, exc::UnicodeDecodeError::new_utf8(py, slice, e)?))
             }
         }
     }
@@ -92,10 +92,28 @@ impl PyModule {
 
     /// Calls a function in the module.
     /// This is equivalent to the Python expression: `getattr(module, name)(*args, **kwargs)`
+    ///
+    /// `args` should be a value that, when converted to Python, results in a tuple.
+    /// For this purpose, you can use:
+    ///  * `cpython::NoArgs` when calling a method without any arguments
+    ///  * otherwise, a Rust tuple with 1 or more elements
+    ///
+    /// # Example
+    /// ```
+    /// use cpython::NoArgs;
+    /// # use cpython::Python;
+    /// # let gil = Python::acquire_gil();
+    /// # let py = gil.python();
+    /// let sys = py.import("sys").unwrap();
+    /// // Call function without arguments:
+    /// let encoding = sys.call(py, "getdefaultencoding", NoArgs, None).unwrap();
+    /// // Call function with a single argument:
+    /// sys.call(py, "setrecursionlimit", (1000,), None).unwrap();
+    /// ```
     pub fn call<A>(&self, py: Python, name: &str, args: A, kwargs: Option<&PyDict>) -> PyResult<PyObject>
         where A: ToPyObject<ObjectType=PyTuple>
     {
-        try!(self.as_object().getattr(py, name)).call(py, args, kwargs)
+        self.as_object().getattr(py, name)?.call(py, args, kwargs)
     }
 
     /// Adds a member to the module.

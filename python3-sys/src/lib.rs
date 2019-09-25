@@ -38,6 +38,8 @@ pub use setobject::*;
 pub use methodobject::*;
 pub use moduleobject::*;
 pub use fileobject::*;
+#[cfg(Py_3_5)]
+pub use fileutils::*;
 pub use pycapsule::*;
 pub use traceback::*;
 pub use sliceobject::*;
@@ -70,6 +72,7 @@ pub use eval::*;
 
 pub use pystrtod::*;
 pub use frameobject::PyFrameObject;
+pub use marshal::*;
 
 mod pyport;
 // mod pymacro; contains nothing of interest for Rust
@@ -127,6 +130,7 @@ mod codecs; // TODO supports PEP-384 only; needs adjustment for Python 3.3 and 3
 mod pyerrors; // TODO supports PEP-384 only; needs adjustment for Python 3.3 and 3.5
 
 mod pystate; // TODO supports PEP-384 only; needs adjustment for Python 3.3 and 3.5
+// #[cfg(Py_3_7)] mod context; TODO
 
 #[cfg(Py_LIMITED_API)] mod pyarena {}
 #[cfg(not(Py_LIMITED_API))] mod pyarena; // TODO: incomplete
@@ -152,7 +156,8 @@ mod eval; // TODO supports PEP-384 only; needs adjustment for Python 3.3 and 3.5
 mod pystrtod; // TODO supports PEP-384 only; needs adjustment for Python 3.3 and 3.5
 // mod pystrcmp; TODO nothing interesting for Rust?
 // mod dtoa; TODO excluded by PEP-384
-// mod fileutils; TODO no public functions?
+#[cfg(Py_3_5)]
+mod fileutils;
 // mod pyfpe; TODO probably not interesting for rust
 
 // Additional headers that are not exported by Python.h
@@ -165,3 +170,4 @@ pub mod frameobject {
     pub enum PyFrameObject {}
 }
 
+mod marshal;

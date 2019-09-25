@@ -52,10 +52,16 @@ macro_rules! py_class_init_members {
         $( {
             // keep $init out of unsafe block; it might contain user code
             let init = $init;
-            let descriptor = try!(unsafe {
+            let descriptor = unsafe {
                 $crate::py_class::members::TypeMember::<$class>::into_descriptor(init, $py, &mut $type_object)
-            });
-            try!(dict.set_item($py, stringify!($name), descriptor));
+            }?;
+            let name = stringify!($name);
+            let name = if name.starts_with("r#") {
+                &name[2..]
+            } else {
+                name
+            };
+            dict.set_item($py, name, descriptor)?;
         })*
         unsafe {
             assert!($type_object.tp_dict.is_null());
@@ -64,17 +70,21 @@ macro_rules! py_class_init_members {
     }};
 }
 
-#[macro_export]
+#[macro_export(local_inner_macros)]
 #[doc(hidden)]
 macro_rules! py_class_instance_method {
     ($py:ident, $class:ident :: $f:ident [ $( { $pname:ident : $ptype:ty = $detail:tt } )* ]) => {{
+        py_class_instance_method!($py, $class::$f, { "" } [ $( { $pname : $ptype = $detail } )* ])
+    }};
+
+    ($py:ident, $class:ident :: $f:ident, { $doc:expr } [ $( { $pname:ident : $ptype:ty = $detail:tt } )* ]) => {{
         unsafe extern "C" fn wrap_instance_method(
             slf: *mut $crate::_detail::ffi::PyObject,
             args: *mut $crate::_detail::ffi::PyObject,
             kwargs: *mut $crate::_detail::ffi::PyObject)
         -> *mut $crate::_detail::ffi::PyObject
         {
-            const LOCATION: &'static str = concat!(stringify!($class), ".", stringify!($f), "()");
+            const LOCATION: &'static str = _cpython__py_class__members__concat!(_cpython__py_class__members__stringify!($class), ".", _cpython__py_class__members__stringify!($f), "()");
             $crate::_detail::handle_callback(
                 LOCATION, $crate::_detail::PyObjectCallbackConverter,
                 |py| {
@@ -89,7 +99,7 @@ macro_rules! py_class_instance_method {
                 })
         }
         unsafe {
-            let method_def = py_method_def!(stringify!($f), 0, wrap_instance_method);
+            let method_def = py_method_def!(_cpython__py_class__members__stringify!($f), 0, wrap_instance_method, $doc);
             $crate::py_class::members::create_instance_method_descriptor::<$class>(method_def)
         }
     }}
@@ -115,13 +125,17 @@ impl <T> TypeMember<T> for InstanceMethodDescriptor<T> where T: PythonObject {
 #[doc(hidden)]
 macro_rules! py_class_class_method {
     ($py:ident, $class:ident :: $f:ident [ $( { $pname:ident : $ptype:ty = $detail:tt } )* ]) => {{
+        py_class_class_method!($py, $class::$f, { "" } [ $( { $pname : $ptype = $detail } )* ])
+    }};
+
+    ($py:ident, $class:ident :: $f:ident, { $doc:expr } [ $( { $pname:ident : $ptype:ty = $detail:tt } )* ]) => {{
         unsafe extern "C" fn wrap_class_method(
             cls: *mut $crate::_detail::ffi::PyObject,
             args: *mut $crate::_detail::ffi::PyObject,
             kwargs: *mut $crate::_detail::ffi::PyObject)
         -> *mut $crate::_detail::ffi::PyObject
         {
-            const LOCATION: &'static str = concat!(stringify!($class), ".", stringify!($f), "()");
+            const LOCATION: &'static str = _cpython__py_class__members__concat!(_cpython__py_class__members__stringify!($class), ".", _cpython__py_class__members__stringify!($f), "()");
             $crate::_detail::handle_callback(
                 LOCATION, $crate::_detail::PyObjectCallbackConverter,
                 |py| {
@@ -136,9 +150,10 @@ macro_rules! py_class_class_method {
                 })
         }
         unsafe {
-            let method_def = py_method_def!(stringify!($f),
+            let method_def = py_method_def!(_cpython__py_class__members__stringify!($f),
                 $crate::_detail::ffi::METH_CLASS,
-                wrap_class_method);
+                wrap_class_method,
+                $doc);
             $crate::py_class::members::create_class_method_descriptor(method_def)
         }
     }}
@@ -165,13 +180,17 @@ impl <T> TypeMember<T> for ClassMethodDescriptor where T: PythonObject {
 #[doc(hidden)]
 macro_rules! py_class_static_method {
     ($py:ident, $class:ident :: $f:ident [ $( { $pname:ident : $ptype:ty = $detail:tt } )* ]) => {{
+        py_class_static_method!($py, $class::$f, { "" } [ $( { $pname : $ptype = $detail } )* ])
+    }};
+
+    ($py:ident, $class:ident :: $f:ident, { $doc:expr } [ $( { $pname:ident : $ptype:ty = $detail:tt } )* ]) => {{
         unsafe extern "C" fn wrap_static_method(
             _slf: *mut $crate::_detail::ffi::PyObject,
             args: *mut $crate::_detail::ffi::PyObject,
             kwargs: *mut $crate::_detail::ffi::PyObject)
         -> *mut $crate::_detail::ffi::PyObject
         {
-            const LOCATION: &'static str = concat!(stringify!($class), ".", stringify!($f), "()");
+            const LOCATION: &'static str = _cpython__py_class__members__concat!(_cpython__py_class__members__stringify!($class), ".", _cpython__py_class__members__stringify!($f), "()");
             $crate::_detail::handle_callback(
                 LOCATION, $crate::_detail::PyObjectCallbackConverter,
                 |py| {
@@ -183,12 +202,28 @@ macro_rules! py_class_static_method {
                 })
         }
         unsafe {
-            let method_def = py_method_def!(stringify!($f),
+            let method_def = py_method_def!(_cpython__py_class__members__stringify!($f),
                 $crate::_detail::ffi::METH_STATIC,
-                wrap_static_method);
+                wrap_static_method,
+                $doc);
             $crate::_detail::py_fn_impl($py, method_def)
         }
     }}
 }
 
+// Rust 2018 support
+#[macro_export]
+#[doc(hidden)]
+macro_rules! _cpython__py_class__members__stringify {
+    ($($inner:tt)*) => {
+        stringify! { $($inner)* }
+    }
+}
 
+#[macro_export]
+#[doc(hidden)]
+macro_rules! _cpython__py_class__members__concat {
+    ($($inner:tt)*) => {
+        concat! { $($inner)* }
+    }
+}
